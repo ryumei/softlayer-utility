@@ -1,6 +1,6 @@
 #!/opt/local/bin/python3.3   -*- cofing:utf-8 -*-
 #
-#
+#  slctrl.py: get information utility
 #  Created by NAKAJIMA Takaaki 
 #  Last modified: Feb 15, 2014.
 #
@@ -8,9 +8,8 @@ import logging
 
 from optparse import OptionParser
 parser = OptionParser()
-parser.add_option("-c", "--config", dest="config", default="~/.softlayer",
+parser.add_option("-f", "--file", dest="config", default="~/.softlayer",
                   help="SoftLayer configuration FILE", metavar="FILE")
-
 (options, args) = parser.parse_args()
 
 def load_config(fname):
@@ -29,7 +28,16 @@ conf = load_config(options.config)
 import SoftLayer
 client = SoftLayer.Client(username=conf['username'], api_key=conf['api_key'])
 
-print(client['Account'].getObject())
+try:
+    account = client['Account'].getObject()
+    print(account)
+
+except SoftLayer.SoftLayerAPIError as e:
+    print("Unable to retrieve account information faultCode%s, faultString=%s"
+            % (e.faultCode, e.faultString))
+    exit(1)
 
 
-
+# list
+# detail(id)
+#
