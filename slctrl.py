@@ -99,6 +99,7 @@ try:
     for cci in cci_manager.list_instances():
         print("FQDN=%s, IP_addr=%s" 
               % (cci['fullyQualifiedDomainName'], cci['primaryIpAddress']))
+        
 
 except SoftLayer.SoftLayerAPIError as e:
     print("Unable to retrieve account information faultCode%s, faultString=%s"

@@ -28,6 +28,11 @@ http://sldn.softlayer.com/reference/services/SoftLayer_Virtual_Guest/
 http://sldn.softlayer.com/reference/services/SoftLayer_User_Customer/addVirtualGuestAccess
 virtualGuestId
 
+Object Storage
+-----------------
+
+アカウント開設直後は、
+
 
 Reference
 ----------
