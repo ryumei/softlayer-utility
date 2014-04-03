@@ -1,4 +1,4 @@
-#!/opt/local/bin/python3.3   -*- cofing:utf-8 -*-
+#!/opt/local/bin/python3.3   -*- coding:utf-8 -*-
 #
 #  slctrl.py: get information utility
 #  Created by NAKAJIMA Takaaki 
