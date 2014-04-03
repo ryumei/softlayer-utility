@@ -2,7 +2,7 @@
 #
 #  slctrl.py: get information utility
 #  Created by NAKAJIMA Takaaki 
-#  Last modified: Feb 15, 2014.
+#  Last modified: Apr 03, 2014.
 #
 #  Require: Python v3
 #
@@ -13,29 +13,8 @@
 # SL_API_KEY = YOUR_API_KEY
 import logging
 
-from optparse import OptionParser
-parser = OptionParser()
-parser.add_option("-f", "--file", dest="config", default="~/.softlayer",
-                  help="SoftLayer configuration FILE", metavar="FILE")
-(options, args) = parser.parse_args()
-
-def load_config(fname):
-    logging.info("Loading configuration file: " + fname)
-    import configparser
-    config = configparser.ConfigParser()
-    try:
-        config.read(fname)
-        return config['softlayer']
-    except Exception as exc:
-        logging.error('Failed to load config file:' + fname)
-        raise(exc)
-
-
-
-conf = load_config(options.config)
-
 import SoftLayer
-client = SoftLayer.Client(username=conf['username'], api_key=conf['api_key'])
+client = SoftLayer.Client()
 
 class IterableItems:
     u"""Pagenate されているリストを全体を回せるようにする"""
@@ -81,20 +60,24 @@ class VirtualGuests(IterableItems):
 try:
     master_account = client['Account']
     
-    account_info = master_account.getObject()
+    user_mask="id, firstName, lastName, email"
+    account_info = master_account.getObject(mask=user_mask)
     print(account_info)
     
     # all child users
     #for user in master_account.getUsers(limit=10, offset=0):
+    print("## Users ##");
     for user in Users(client):
         print("id:%d, %s" % (user['id'], user['username']))
        
     # Virtual guest OSes
     # for vg in client['Account'].getVirtualGuests(limit=10, offset=0):
+    print("## Virtual guests ##");
     for vg in VirtualGuests(client):
         print("AccountId=%s, ID=%d, hostname=%s"
               % (vg['accountId'], vg['id'], vg['hostname']))
     
+    print("## Instances ##");
     cci_manager = SoftLayer.CCIManager(client)
     for cci in cci_manager.list_instances():
         print("FQDN=%s, IP_addr=%s" 
