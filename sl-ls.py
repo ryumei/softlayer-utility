@@ -1,4 +1,5 @@
-#!/opt/local/bin/python3.3   -*- coding:utf-8 -*-
+#!/usr/bin/env python3
+#                                        -*- coding:utf-8 -*-
 #
 #  sl-ls.py: get information utility
 #  Created by NAKAJIMA Takaaki 
