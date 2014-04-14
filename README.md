@@ -17,8 +17,7 @@ See also [Installation - SoftLayer API Python Client](https://softlayer-api-pyth
 Set credential
 ---------------
 
-slctrl.py read ~/.softlayer configuration file.
-And, SoftLayer API can refers environmental variables ``SL_USERNAME`` and ``SL_API_KEY``.
+SoftLayer API can refers environmental variables ``SL_USERNAME`` and ``SL_API_KEY``.
 
 
 Note
@@ -27,11 +26,6 @@ Note
 http://sldn.softlayer.com/reference/services/SoftLayer_Virtual_Guest/
 http://sldn.softlayer.com/reference/services/SoftLayer_User_Customer/addVirtualGuestAccess
 virtualGuestId
-
-Object Storage
------------------
-
-アカウント開設直後は、
 
 
 Reference

@@ -76,4 +76,14 @@ Object Stroage
 1 オブジェクト当たり 5GB まで。超える場合は、分割して保存することも可能。
 名称は、URL エンコードしたときに 1024 文字以下になること。
 
-http://sldn.softlayer.com/article/Introduction-Object-Storage
+http://sldn.softlayer.com/article/Introduction-Object-Storage---
+title: sl command
+tags: SoftLayer
+---
+
+
+オプションの確認
+
+    % sl cci create-options
+
+
