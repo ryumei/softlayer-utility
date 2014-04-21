@@ -3,7 +3,7 @@
 #
 #  sl-ls.py: get information utility
 #  Created by NAKAJIMA Takaaki 
-#  Last modified: Apr 13, 2014.
+#  Last modified: Apr 16, 2014.
 #
 #  Require: Python v3
 #
@@ -85,8 +85,8 @@ try:
     print("## Instances ##");
     cci_manager = SoftLayer.CCIManager(client)
     for cci in cci_manager.list_instances():
-        print("FQDN=%s, IP_addr=%s" 
-              % (cci['fullyQualifiedDomainName'], cci['primaryIpAddress']))
+        print("FQDN=%s, IP_addrs=%s, %s" 
+              % (cci['fullyQualifiedDomainName'], cci['primaryIpAddress'], cci['primaryBackendIpAddress']))
        
     print("## Billing items ##")
     billing_mask = "id, parentId, description, currentHourlyCharge"
