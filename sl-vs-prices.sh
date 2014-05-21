@@ -1,7 +1,7 @@
 #!/bin/sh
 #
-#   Get list of sl cci (Virtual server) price
-#   Last modified by NAKAJIMA Takaaki on Apr 14, 2014.
+#   Get list of prices of sl vertual server (cci)
+#   Last modified by NAKAJIMA Takaaki on May 22, 2014.
 #
 
 cpus="1 2 4 8"
@@ -17,7 +17,7 @@ do
     do
       for period in hourly monthly
       do
-        ofile=sl-cci-price-${os_type}_${cpu}_${memory}_${period}.txt
+        ofile=sl-vs-price-${os_type}_${cpu}_${memory}_${period}.txt
         if [ ! -f $ofile ]
         then
           sl cci create --test \
