@@ -5,7 +5,10 @@
 #  Created by NAKAJIMA Takaaki 
 #  Last modified: Apr 16, 2014.
 #
-#  Require: Python v3
+#  Require:
+#    Python v3
+#    python-softlayer (via pip)
+#    python-dateutil (via pip)
 #
 #  See also https://softlayer-api-python-client.readthedocs.org
 #
@@ -78,7 +81,6 @@ class IterableItems:
         item = self.fetched.pop()
         return item
 
-
 class Users(IterableItems):
     u"""List of User_Customer"""
     def define_fetch_method(self):
@@ -103,11 +105,13 @@ class BillingInvoices(IterableItems):
     def define_fetch_method(self):
         self.fetch_method = master_account.getInvoices
 
-import re
+import dateutil.parser
+
 def str2date(str):
-    # e.g. 2014-07-03T13:06:48+09:00 -> 2014-07-03T13:06:48+0900
-    str = re.sub(r'(\+\d\d):(\d\d)$', '\\1\\2', str)
-    return datetime.datetime.strptime(str, '%Y-%m-%dT%H:%M:%S%z')
+    return dateutil.parser.parse(str)
+    # [WORKARROUND]
+    #str = re.sub(r'(\+\d\d):(\d\d)$', '\\1\\2', str)
+    #return datetime.datetime.strptime(str, '%Y-%m-%dT%H:%M:%S%z')
 
 
 # --------------------------------------------------------------
