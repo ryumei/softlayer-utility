@@ -96,6 +96,23 @@ class BillingItems(IterableItems):
     def define_fetch_method(self):
         self.fetch_method = master_account.getAllBillingItems
 
+from decimal import Decimal as Decimal
+
+class BillingInvoice():
+    def __init__(self, d):
+        self.accountId  = d['accountId']
+        self.id         = d['id']
+        self.createDate = str2date(d['createDate'])
+        self.closedDate = str2date(d['closedDate'])
+        self.modifyDate = str2date(d['modifyDate'])
+        self.startingBalance = Decimal(d['startingBalance'])
+        self.endingBalance   = Decimal(d['endingBalance'])
+        self.taxStatusId = d['taxStatusId']
+        self.taxTypeId = d['taxTypeId']
+        self.statusCode = d['statusCode']
+        self.state = d['state']
+        self.typeCode = d['typeCode']
+
 class BillingInvoices(IterableItems):
     u"""List of Billing_Invoices"""
     def __init__(self, client, limit=10):
@@ -184,23 +201,31 @@ try:
     #    print("id:%d, %s" % (user['id'], user['username']))
 
     # https://%SL_USERNAME%:%SL_API_KEY%@api.softlayer.com/rest/v3/SoftLayer_Account/Invoices.json
+    invoices = []
     print("Billing Invoices")
     for i in BillingInvoices(client):
         print(json.dumps(i, sort_keys=True, indent=2))
         print(str2date(i['createDate']))
+        invoices.append(i)
 
-#    print("Billing items: -> " + fname)
-#    billingItems = []
-#    for b in BillingItems(client):
-#        billingItems.append(b)
-#        #writer.writerow(b)
-#        #print(json.dumps(b, sort_keys=True, indent=4))
-#    
-#    # Output
-#    with open(fname, mode='w') as f:
-#        writer = csv.DictWriter(f, FIELDNAMES, extrasaction='raise') # ignore/raise
-#        billingItems.insert(0, HEADER)
-#        writer.writerows(billingItems)
+    #with open('slcrooge-invoices', mode='w') as f:
+    #    writer = csv.DictWriter(f, FIELDNAMES, extrasaction='raise') # ignore/raise
+    #    
+    #    writer.writerows(invoices)
+
+
+    print("Billing items: -> " + fname)
+    billingItems = []
+    for b in BillingItems(client):
+        billingItems.append(b)
+        #writer.writerow(b)
+        #print(json.dumps(b, sort_keys=True, indent=4))
+    
+    # Output
+    with open(fname, mode='w') as f:
+        writer = csv.DictWriter(f, FIELDNAMES, extrasaction='raise') # ignore/raise
+        billingItems.insert(0, HEADER)
+        writer.writerows(billingItems)
 
 except SoftLayer.SoftLayerAPIError as e:
     logging.error("Unable to retrieve account information faultCode=%s, faultString=%s"
