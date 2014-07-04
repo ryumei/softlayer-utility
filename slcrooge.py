@@ -50,23 +50,15 @@ class IterableItems:
         self.client = client
         self.offset = 0
         self.limit = limit
-        self.mask = ''
-        self.define_fetch_method()
         self.fetched = []
         
-    def define_fetch_method(self):
+    def concrete_fetch(self):
         u"""MUST be implemented in inherited class"""
         # self.fetch_method に適切な pagenate メソッドを設定
         raise NotImpementedError("Not implemented yet.")
-
-    #def set_mask(self, mask):
-    #    self.mask = mask
-
+    
     def fetch(self):
-        if (self.mask != ''):
-            items = self.fetch_method(limit=self.limit, offset=self.offset, mask=self.mask)
-        else:
-            items = self.fetch_method(limit=self.limit, offset=self.offset)
+        items = self.concrete_fetch()
         self.offset += self.limit
         return items
     
@@ -77,7 +69,7 @@ class IterableItems:
         if len(self.fetched) < 1:
             self.fetched = self.fetch()
             logging.debug(self.__class__.__name__ + ' has been fetched.')
-            if len(self.fetched) < 1: # No redisual items
+            if len(self.fetched) < 1: # No residual items
                 raise StopIteration
         item = self.fetched.pop()
         return self.cast_hook(item)
@@ -109,21 +101,18 @@ class DictStore():
 
 class Users(IterableItems):
     u"""List of User_Customer"""
-    def define_fetch_method(self):
-        self.fetch_method = self.client['Account'].getUsers
+    def concrete_fetch(self):
+        return self.client['Account'].getUsers(offset=self.offset, limit=self.limit)
 
 class VirtualGuests(IterableItems):
     u"""List of Virtual_Guest"""
-    def define_fetch_method(self):
-        self.fetch_method = self.client['Account'].getVirtualGuests
+    def concrete_fetch(self):
+        return self.client['Account'].getVirtualGuests(offset=self.offset, limit=self.limit)
 
 class BillingItems(IterableItems):
     u"""List of Billing_Item"""
-    def define_fetch_method(self):
-        self.fetch_method = client['Account'].getAllBillingItems
-        # Retrieve the billing items that will be on an account's next invoice.
-    def cast_hook(self, obj):
-        return BillingItem(obj)        
+    def concrete_fetch(self):
+        return client['Account'].getAllBillingItems(offset=self.offset, limit=self.limit)
 
 class PaidBillingItems(IterableItems):
     u"""List of Billing_Items of Past Billing Invoice"""
@@ -131,107 +120,18 @@ class PaidBillingItems(IterableItems):
         super(PaidBillingItems, self).__init__(client, limit)
         self.invoice_id = invoice_id
 
-    def define_fetch_method(self):
-        self.fetch_method = client['Billing_Invoice'].getItems
-    
-    def fetch(self):
-        items = self.fetch_method(id=self.invoice_id, limit=self.limit, offset=self.offset)
-        self.offset += self.limit
-        return items    
-    
-    def cast_hook(self, obj):
-        #print(json.dumps(obj, sort_keys=True, indent=2))
-        return obj
-        #TODO# return BillingItem(obj)
+    def concrete_fetch(self):
+        return self.client['Billing_Invoice'].getItems(id=self.invoice_id, limit=self.limit, offset=self.offset)
 
 class BillingInvoices(IterableItems):
     u"""List of Billing_Invoices"""
-    def __init__(self, client, limit=10):
-        super(BillingInvoices, self).__init__(client, limit)
-        self.mask = ','.join(BillingInvoice.header_list())
-
-    def define_fetch_method(self):
-        self.fetch_method = client['Account'].getInvoices
-    
-    def cast_hook(self, obj):
-        return BillingInvoice(obj)
-
-# --------------------------------------------------------------
-
-# see also http://sldn.softlayer.com/reference/datatypes/SoftLayer_Billing_Item
-
-class BillingItem(DictStore):
-    def __init__(self, d):
-        super(BillingItem, self).__init__(d)
-        self.createDate       = str2date(d['createDate'])
-        self.modifyDate       = str2date(d['modifyDate'])
-        self.cycleStartDate   = str2date(d['cycleStartDate'])
-        self.cancallationDate = str2date(d['cancellationDate'])
-        self.lastBillDate     = str2date(d['lastBillDate'])
-        self.nextBillDate     = str2date(d['nextBillDate'])
-        
-    @classmethod
-    def header_list(cls):
-        return [ 'id', 'parentId', 'associatedBillingItemId',
-                 'categoryCode', 'description', 'notes',
-                 'resourceName',      'resourceTableId',
-                 'orderItemId',
-                 'serviceProviderId',
-                 'laborFee',          'laborFeeTaxRate',                 
-                 'oneTimeFee',        'oneTimeFeeTaxRate',
-                 'setupFee',          'setupFeeTaxRate',
-                 'recurringFee',      'recurringFeeTaxRate',
-                 'hoursUsed',
-                 'currentHourlyCharge',
-                 'hourlyRecurringFee',
-                 'recurringMonths',
-                 'allowCancellationFlag',
-                 'hostName',
-                 'domainName',
-                 'createDate',
-                 'modifyDate',
-                 'cycleStartDate',
-                 'cancellationDate',
-                 'lastBillDate',
-                 'nextBillDate', ]
-
-class BillingInvoice(DictStore):
-    def __init__(self, d):
-        super(BillingInvoice, self).__init__(d)
-        
-        self.createDate = str2date(d['createDate'])
-        self.closedDate = str2date(d['closedDate'])
-        self.modifyDate = str2date(d['modifyDate'])        
-        if 'startingBalance' in d:
-            self.startingBalance = Decimal(d['startingBalance'])
-        else:
-            self.startingBalance = Decimal(0)   # TODO: determine default value
-        self.endingBalance   = Decimal(d['endingBalance'])
-    
-    @classmethod
-    def header_list(cls):
-        return [ 'accountId', 'id',
-                 'createDate', 'closedDate', 'modifyDate',
-                 'startingBalance', 'endingBalance', 'taxStatusId', 'taxTypeId',
-                 'statusCode', 'state', 'typeCode' ]
+    def concrete_fetch(self):
+        return client['Account'].getInvoices(offset=self.offset, limit=self.limit)
 
 # ----------------------------------------------------------------------
 
 def str2date(str):
     return dateutil.parser.parse(str)
-
-def save_csv(filename, items, header=[]):
-    with open(filename, mode='w', newline='') as f:
-        writer = csv.writer(f) #, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-        try:
-            writer.writerow(header)
-            col = 0
-            for i in items:
-                col += 1
-                writer.writerow(i.to_a())
-        except csv.Error as e:
-            logging.error('file %s: line %d: %s' % (filename, col, e))
-            exit(1)
 
 # ----------------------------------------------------------------------
 
@@ -240,25 +140,23 @@ timestamp = datetime.datetime.now().strftime("%y%m%d%H%M%S")
 try:
     client = SoftLayer.Client()
     
-    master_account = client['Account']
-    
     print("## Account information ##") 
     user_mask="id, firstName, lastName, email"
-    account_info = master_account.getObject(mask=user_mask)
+    account_info = client['Account'].getObject(mask=user_mask)
     print(account_info)
     
-#    print("## Users ##");
-#    for user in Users(client):
-#        print("id:%d, %s" % (user['id'], user['username']))
+    print("## Users ##");
+    for user in Users(client):
+        print("id:%d, %s" % (user['id'], user['username']))
     
     print("## Paid Billing Invoices ##")
     invoices = []
     for i in BillingInvoices(client):
-        invoices.append(i)
-        billing_items = []
-        with open('slcrooge-' + str(i.id) + '.json', mode='w') as f:
-            for b in PaidBillingItems(client, i.id):
-                billing_items.append(b)
+        invoice_id = i['id']
+        with open('slcrooge-' + str(invoice_id) + '.json', mode='w') as f:
+            #billing_items = []
+            for b in PaidBillingItems(client, invoice_id):
+                #billing_items.append(b)
                 json.dump(b, f, indent=2)
     
     # MEMO: client['Billing_Invoice'].getObject(id=2638314)
@@ -267,12 +165,10 @@ try:
     print("## Next Billing items ##")
     billingItems = []
     for b in BillingItems(client):
-        billingItems.append(b)
-        #print(json.dumps(b, sort_keys=True, indent=4))
-    save_csv('slcrooge-' + timestamp + '-items.csv', billingItems,
-             header=BillingItem.header_list())  
-
-    
+#        billingItems.append(b)
+        print(json.dumps(b, sort_keys=True, indent=4))
+#    save_csv('slcrooge-latest' + timestamp + '-items.csv', billingItems,
+#             header=BillingItem.header_list())  
 
 except SoftLayer.SoftLayerAPIError as e:
     logging.error("Unable to retrieve account information faultCode=%s, faultString=%s"
