@@ -17,10 +17,10 @@
 # SL_API_KEY = YOUR_API_KEY
 
 import logging
-import json
 import csv
 import datetime
-
+from decimal import Decimal as Decimal
+import dateutil.parser
 import SoftLayer
 
 # ----------------------------------------------------------------------
@@ -79,7 +79,32 @@ class IterableItems:
             if len(self.fetched) < 1: # No redisual items
                 raise StopIteration
         item = self.fetched.pop()
-        return item
+        return self.cast_hook(item)
+    
+    def cast_hook(self, obj):
+        u"""You can override to cast an object"""
+        return obj
+
+class DictStore():
+    def __init__(self, d):
+        for k, v in d.items():
+            self.add(k, v)
+    
+    def add(self, key, value):
+        self.__dict__[key] = value
+    
+    def header_list(self):
+        u"""Should be implemented in inherited class"""
+        return []
+    
+    def to_a(self):
+        lst = []
+        for k in self.header_list():
+            v = ''
+            if k in self.__dict__:
+                v = self.__dict__[k]
+            lst.append(v)
+        return lst
 
 class Users(IterableItems):
     u"""List of User_Customer"""
@@ -95,96 +120,101 @@ class BillingItems(IterableItems):
     u"""List of Billing_Item"""
     def define_fetch_method(self):
         self.fetch_method = master_account.getAllBillingItems
-
-from decimal import Decimal as Decimal
-
-class BillingInvoice():
-    def __init__(self, d):
-        self.accountId  = d['accountId']
-        self.id         = d['id']
-        self.createDate = str2date(d['createDate'])
-        self.closedDate = str2date(d['closedDate'])
-        self.modifyDate = str2date(d['modifyDate'])
-        self.startingBalance = Decimal(d['startingBalance'])
-        self.endingBalance   = Decimal(d['endingBalance'])
-        self.taxStatusId = d['taxStatusId']
-        self.taxTypeId = d['taxTypeId']
-        self.statusCode = d['statusCode']
-        self.state = d['state']
-        self.typeCode = d['typeCode']
+    def cast_hook(self, obj):
+        return BillingItem(obj)        
 
 class BillingInvoices(IterableItems):
     u"""List of Billing_Invoices"""
     def __init__(self, client, limit=10):
         super(BillingInvoices, self).__init__(client, limit)
-        self.mask = 'accountId,id,createDate,closedDate,modifyDate,startingBalance,endingBalance,taxStatusId,taxTypeId,statusCode,state,typeCode'
+        self.mask = ','.join(BillingInvoice.header_list())
 
     def define_fetch_method(self):
         self.fetch_method = master_account.getInvoices
-
-import dateutil.parser
-
-def str2date(str):
-    return dateutil.parser.parse(str)
-    # [WORKARROUND]
-    #str = re.sub(r'(\+\d\d):(\d\d)$', '\\1\\2', str)
-    #return datetime.datetime.strptime(str, '%Y-%m-%dT%H:%M:%S%z')
-
+    
+    def cast_hook(self, obj):
+        return BillingInvoice(obj)
 
 # --------------------------------------------------------------
 
 # see also http://sldn.softlayer.com/reference/datatypes/SoftLayer_Billing_Item
 
-FIELDNAMES=('id',
-            'parentId',
-            'associatedBillingItemId',
-            
-            'categoryCode',
-            'description',
-            'notes',
+class BillingItem(DictStore):
+    def __init__(self, d):
+        super(BillingItem, self).__init__(d)
+        self.createDate       = str2date(d['createDate'])
+        self.modifyDate       = str2date(d['modifyDate'])
+        self.cycleStartDate   = str2date(d['cycleStartDate'])
+        self.cancallationDate = str2date(d['cancellationDate'])
+        self.lastBillDate     = str2date(d['lastBillDate'])
+        self.nextBillDate     = str2date(d['nextBillDate'])
+        
+    @classmethod
+    def header_list(cls):
+        return [ 'id', 'parentId', 'associatedBillingItemId',
+                 'categoryCode', 'description', 'notes',
+                 'resourceName',      'resourceTableId',
+                 'orderItemId',
+                 'serviceProviderId',
+                 'laborFee',          'laborFeeTaxRate',                 
+                 'oneTimeFee',        'oneTimeFeeTaxRate',
+                 'setupFee',          'setupFeeTaxRate',
+                 'recurringFee',      'recurringFeeTaxRate',
+                 'hoursUsed',
+                 'currentHourlyCharge',
+                 'hourlyRecurringFee',
+                 'recurringMonths',
+                 'allowCancellationFlag',
+                 'hostName',
+                 'domainName',
+                 'createDate',
+                 'modifyDate',
+                 'cycleStartDate',
+                 'cancellationDate',
+                 'lastBillDate',
+                 'nextBillDate', ]
 
-            'resourceName',
-            'resourceTableId',
-
-            'orderItemId',
-
-            'serviceProviderId',
-
-            'laborFee',
-            'laborFeeTaxRate',
-
-            'oneTimeFee',
-            'oneTimeFeeTaxRate',
-
-            'setupFee',
-            'setupFeeTaxRate',
-
-            'recurringFee',
-            'recurringFeeTaxRate',
-            
-            'hoursUsed',
-            'currentHourlyCharge',
-            'hourlyRecurringFee',
-
-            'recurringMonths',
-
-            'allowCancellationFlag',
-
-            'hostName',
-            'domainName',
-
-            'createDate',
-            'modifyDate',
-            'cycleStartDate',
-            'cancellationDate',
-            'lastBillDate',
-            'nextBillDate',
-            )
-HEADER = dict([ (val,val) for val in FIELDNAMES ])  
-
-fname = 'slcrooge-' + datetime.datetime.now().strftime("%y%m%d%H%M%S") + '.csv'
+class BillingInvoice(DictStore):
+    def __init__(self, d):
+        super(BillingInvoice, self).__init__(d)
+        
+        self.createDate = str2date(d['createDate'])
+        self.closedDate = str2date(d['closedDate'])
+        self.modifyDate = str2date(d['modifyDate'])        
+        if 'startingBalance' in d:
+            self.startingBalance = Decimal(d['startingBalance'])
+        else:
+            self.startingBalance = Decimal(0)   # TODO: determine default value
+        self.endingBalance   = Decimal(d['endingBalance'])
+    
+    @classmethod
+    def header_list(cls):
+        return [ 'accountId', 'id',
+                 'createDate', 'closedDate', 'modifyDate',
+                 'startingBalance', 'endingBalance', 'taxStatusId', 'taxTypeId',
+                 'statusCode', 'state', 'typeCode' ]
 
 # ----------------------------------------------------------------------
+
+def str2date(str):
+    return dateutil.parser.parse(str)
+
+def save_csv(filename, items, header=[]):
+    with open(filename, mode='w', newline='') as f:
+        writer = csv.writer(f) #, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+        try:
+            writer.writerow(header)
+            col = 0
+            for i in items:
+                col += 1
+                writer.writerow(i.to_a())
+        except csv.Error as e:
+            logging.error('file %s: line %d: %s' % (filename, col, e))
+            exit(1)
+
+# ----------------------------------------------------------------------
+
+timestamp = datetime.datetime.now().strftime("%y%m%d%H%M%S")
 
 try:
     client = SoftLayer.Client()
@@ -196,36 +226,24 @@ try:
     account_info = master_account.getObject(mask=user_mask)
     print(account_info)
     
-    #print("## Users ##");
-    #for user in Users(client, limit=20):
-    #    print("id:%d, %s" % (user['id'], user['username']))
-
-    # https://%SL_USERNAME%:%SL_API_KEY%@api.softlayer.com/rest/v3/SoftLayer_Account/Invoices.json
+    print("## Users ##");
+    for user in Users(client):
+        print("id:%d, %s" % (user['id'], user['username']))
+    
+    print("## Billing Invoices ##")
     invoices = []
-    print("Billing Invoices")
     for i in BillingInvoices(client):
-        print(json.dumps(i, sort_keys=True, indent=2))
-        print(str2date(i['createDate']))
         invoices.append(i)
+    save_csv('slcrooge-' + timestamp + '-invoices.csv', invoices,
+             header=BillingInvoice.header_list())
 
-    #with open('slcrooge-invoices', mode='w') as f:
-    #    writer = csv.DictWriter(f, FIELDNAMES, extrasaction='raise') # ignore/raise
-    #    
-    #    writer.writerows(invoices)
-
-
-    print("Billing items: -> " + fname)
+    print("## Billing items ##")
     billingItems = []
     for b in BillingItems(client):
         billingItems.append(b)
-        #writer.writerow(b)
         #print(json.dumps(b, sort_keys=True, indent=4))
-    
-    # Output
-    with open(fname, mode='w') as f:
-        writer = csv.DictWriter(f, FIELDNAMES, extrasaction='raise') # ignore/raise
-        billingItems.insert(0, HEADER)
-        writer.writerows(billingItems)
+    save_csv('slcrooge-' + timestamp + '-items.csv', billingItems,
+             header=BillingItem.header_list())  
 
 except SoftLayer.SoftLayerAPIError as e:
     logging.error("Unable to retrieve account information faultCode=%s, faultString=%s"
