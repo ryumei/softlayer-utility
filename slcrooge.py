@@ -3,7 +3,7 @@
 #
 #  slcrooge.py: Get Billing information utility
 #  Created by NAKAJIMA Takaaki 
-#  Last modified: Apr 16, 2014.
+#  Last modified: Jul. 4, 2014.
 #
 #  Require:
 #    Python v3
@@ -22,6 +22,7 @@ import datetime
 from decimal import Decimal as Decimal
 import dateutil.parser
 import SoftLayer
+import json
 
 # ----------------------------------------------------------------------
 
@@ -46,7 +47,7 @@ class IterableItems:
     u"""Iterator for Pagenated list"""
     
     def __init__(self, client, limit=10):
-        self.master_account = client['Account']
+        self.client = client
         self.offset = 0
         self.limit = limit
         self.mask = ''
@@ -109,19 +110,39 @@ class DictStore():
 class Users(IterableItems):
     u"""List of User_Customer"""
     def define_fetch_method(self):
-        self.fetch_method = self.master_account.getUsers
+        self.fetch_method = self.client['Account'].getUsers
 
 class VirtualGuests(IterableItems):
     u"""List of Virtual_Guest"""
     def define_fetch_method(self):
-        self.fetch_method = self.master_account.getVirtualGuests
+        self.fetch_method = self.client['Account'].getVirtualGuests
 
 class BillingItems(IterableItems):
     u"""List of Billing_Item"""
     def define_fetch_method(self):
-        self.fetch_method = master_account.getAllBillingItems
+        self.fetch_method = client['Account'].getAllBillingItems
+        # Retrieve the billing items that will be on an account's next invoice.
     def cast_hook(self, obj):
         return BillingItem(obj)        
+
+class PaidBillingItems(IterableItems):
+    u"""List of Billing_Items of Past Billing Invoice"""
+    def __init__(self, client, invoice_id, limit=10):
+        super(PaidBillingItems, self).__init__(client, limit)
+        self.invoice_id = invoice_id
+
+    def define_fetch_method(self):
+        self.fetch_method = client['Billing_Invoice'].getItems
+    
+    def fetch(self):
+        items = self.fetch_method(id=self.invoice_id, limit=self.limit, offset=self.offset)
+        self.offset += self.limit
+        return items    
+    
+    def cast_hook(self, obj):
+        #print(json.dumps(obj, sort_keys=True, indent=2))
+        return obj
+        #TODO# return BillingItem(obj)
 
 class BillingInvoices(IterableItems):
     u"""List of Billing_Invoices"""
@@ -130,7 +151,7 @@ class BillingInvoices(IterableItems):
         self.mask = ','.join(BillingInvoice.header_list())
 
     def define_fetch_method(self):
-        self.fetch_method = master_account.getInvoices
+        self.fetch_method = client['Account'].getInvoices
     
     def cast_hook(self, obj):
         return BillingInvoice(obj)
@@ -226,24 +247,32 @@ try:
     account_info = master_account.getObject(mask=user_mask)
     print(account_info)
     
-    print("## Users ##");
-    for user in Users(client):
-        print("id:%d, %s" % (user['id'], user['username']))
+#    print("## Users ##");
+#    for user in Users(client):
+#        print("id:%d, %s" % (user['id'], user['username']))
     
-    print("## Billing Invoices ##")
+    print("## Paid Billing Invoices ##")
     invoices = []
     for i in BillingInvoices(client):
         invoices.append(i)
-    save_csv('slcrooge-' + timestamp + '-invoices.csv', invoices,
-             header=BillingInvoice.header_list())
+        billing_items = []
+        with open('slcrooge-' + str(i.id) + '.json', mode='w') as f:
+            for b in PaidBillingItems(client, i.id):
+                billing_items.append(b)
+                json.dump(b, f, indent=2)
+    
+    # MEMO: client['Billing_Invoice'].getObject(id=2638314)
+    # client['Billing_Invoice'].getItems(id=2638314)
 
-    print("## Billing items ##")
+    print("## Next Billing items ##")
     billingItems = []
     for b in BillingItems(client):
         billingItems.append(b)
         #print(json.dumps(b, sort_keys=True, indent=4))
     save_csv('slcrooge-' + timestamp + '-items.csv', billingItems,
              header=BillingItem.header_list())  
+
+    
 
 except SoftLayer.SoftLayerAPIError as e:
     logging.error("Unable to retrieve account information faultCode=%s, faultString=%s"
