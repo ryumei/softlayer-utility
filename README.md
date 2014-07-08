@@ -23,12 +23,15 @@ SoftLayer API can refers environmental variables ``SL_USERNAME`` and ``SL_API_KE
 Note
 ----------
 
-http://sldn.softlayer.com/reference/services/SoftLayer_Virtual_Guest/
-http://sldn.softlayer.com/reference/services/SoftLayer_User_Customer/addVirtualGuestAccess
-virtualGuestId
+- http://sldn.softlayer.com/reference/services/SoftLayer_Virtual_Guest/
+- http://sldn.softlayer.com/reference/services/SoftLayer_User_Customer/addVirtualGuestAccess
+
 
 
 Reference
 ----------
 - [Python | SLDN](http://sldn.softlayer.com/article/python)
 - [SoftLayer API Python Client](https://softlayer-api-python-client.readthedocs.org)
+
+
+

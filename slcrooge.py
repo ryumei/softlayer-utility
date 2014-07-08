@@ -16,12 +16,13 @@
 # SL_USERNAME = YOUR_USERNAME
 # SL_API_KEY = YOUR_API_KEY
 
-import logging
+import logging, sys, traceback
 import csv
 import datetime
 from decimal import Decimal as Decimal
 import dateutil.parser
 import SoftLayer
+from SoftLayer.utils import NestedDict
 import json
 
 # ----------------------------------------------------------------------
@@ -29,7 +30,7 @@ import json
 # Logging
 
 stream_log = logging.StreamHandler()
-stream_log.setLevel(logging.INFO)
+stream_log.setLevel(logging.WARNING)
 stream_log.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
 
 file_log = logging.FileHandler(filename='slcrooge.log')
@@ -46,19 +47,17 @@ logging.getLogger().setLevel(logging.DEBUG)
 class IterableItems:
     u"""Iterator for Pagenated list"""
     
-    def __init__(self, client, limit=10):
-        self.client = client
+    def __init__(self, fetch_method, id=None, mask=None, limit=10):
+        self.fetch_method = fetch_method
+        self.mask = mask # None or comma separated string
+        self.id = id
         self.offset = 0
         self.limit = limit
         self.fetched = []
-        
-    def concrete_fetch(self):
-        u"""MUST be implemented in inherited class"""
-        # self.fetch_method に適切な pagenate メソッドを設定
-        raise NotImpementedError("Not implemented yet.")
     
     def fetch(self):
-        items = self.concrete_fetch()
+        items = self.fetch_method(offset=self.offset, limit=self.limit,
+                                  mask=self.mask, id=self.id)
         self.offset += self.limit
         return items
     
@@ -72,11 +71,7 @@ class IterableItems:
             if len(self.fetched) < 1: # No residual items
                 raise StopIteration
         item = self.fetched.pop()
-        return self.cast_hook(item)
-    
-    def cast_hook(self, obj):
-        u"""You can override to cast an object"""
-        return obj
+        return item
 
 class DictStore():
     def __init__(self, d):
@@ -86,9 +81,14 @@ class DictStore():
     def add(self, key, value):
         self.__dict__[key] = value
     
+    @classmethod
     def header_list(self):
         u"""Should be implemented in inherited class"""
         return []
+    
+    @classmethod
+    def header_as_mask(cls):
+        return ','.join(cls.header_list())
     
     def to_a(self):
         lst = []
@@ -99,34 +99,67 @@ class DictStore():
             lst.append(v)
         return lst
 
-class Users(IterableItems):
-    u"""List of User_Customer"""
-    def concrete_fetch(self):
-        return self.client['Account'].getUsers(offset=self.offset, limit=self.limit)
+# --------------------------------------
 
-class VirtualGuests(IterableItems):
-    u"""List of Virtual_Guest"""
-    def concrete_fetch(self):
-        return self.client['Account'].getVirtualGuests(offset=self.offset, limit=self.limit)
+class BillingInvoice(DictStore):
+    def __init__(self, d):
+        super(BillingInvoice, self).__init__(d)
+        self.__dict__['createDate'] = str2date(d['createDate'])
+        self.__dict__['closedDate'] = str2date(d['closedDate'])
+        self.__dict__['modifyDate'] = str2date(d['modifyDate'])
+        
+    @classmethod
+    def header_list(cls):
+        return ("id",
+                "accountId",
 
-class BillingItems(IterableItems):
-    u"""List of Billing_Item"""
-    def concrete_fetch(self):
-        return client['Account'].getAllBillingItems(offset=self.offset, limit=self.limit)
+                "statusCode",
+                "typeCode",
+                "documentsGeneratedFlag",
+                
+                "startingBalance",
+                "endingBalance",
+                "taxTypeId",
+                "taxStatusId",
+                "claimedTaxExemptTxFlag",
+                
+                "createDate",
+                "closedDate",
+                "modifyDate",
+                )
 
-class PaidBillingItems(IterableItems):
-    u"""List of Billing_Items of Past Billing Invoice"""
-    def __init__(self, client, invoice_id, limit=10):
-        super(PaidBillingItems, self).__init__(client, limit)
-        self.invoice_id = invoice_id
-
-    def concrete_fetch(self):
-        return self.client['Billing_Invoice'].getItems(id=self.invoice_id, limit=self.limit, offset=self.offset)
-
-class BillingInvoices(IterableItems):
-    u"""List of Billing_Invoices"""
-    def concrete_fetch(self):
-        return client['Account'].getInvoices(offset=self.offset, limit=self.limit)
+class BillingItem(DictStore):
+    def __init__(self, d):
+        super(BillingItem, self).__init__(d)
+        self.__dict__['createDate'] = str2date(d['createDate'])
+    
+    @classmethod
+    def header_list(cls):
+        return ("id",
+                "invoiceId",
+                "billingItemId",
+                "parentId",
+                "associatedInvoiceItemId",
+                
+                "createDate",
+                
+                "categoryCode",
+                "description",
+                "resourceTableId",
+                
+                "setupFee",
+                "setupFeeTaxRate",
+                
+                "oneTimeFee",
+                "oneTimeFeeTaxRate",
+                
+                "recurringFee",
+                "hourlyRecurringFee",
+                "recurringFeeTaxRate",
+                
+                "laborFeeTaxRate",
+                "laborFee",
+                )
 
 # ----------------------------------------------------------------------
 
@@ -140,37 +173,88 @@ timestamp = datetime.datetime.now().strftime("%y%m%d%H%M%S")
 try:
     client = SoftLayer.Client()
     
-    print("## Account information ##") 
-    user_mask="id, firstName, lastName, email"
-    account_info = client['Account'].getObject(mask=user_mask)
-    print(account_info)
+#    print("## Account information ##") 
+#    account_info = client['Account'].getObject(mask="id, firstName, lastName, email")
+#    print(account_info)
     
-    print("## Users ##");
-    for user in Users(client):
-        print("id:%d, %s" % (user['id'], user['username']))
-    
-    print("## Paid Billing Invoices ##")
-    invoices = []
-    for i in BillingInvoices(client):
-        invoice_id = i['id']
-        with open('slcrooge-' + str(invoice_id) + '.json', mode='w') as f:
-            #billing_items = []
-            for b in PaidBillingItems(client, invoice_id):
-                #billing_items.append(b)
-                json.dump(b, f, indent=2)
-    
-    # MEMO: client['Billing_Invoice'].getObject(id=2638314)
-    # client['Billing_Invoice'].getItems(id=2638314)
+    # 1. Build map Billing_Item to User_Customer from Billing_Order
 
-    print("## Next Billing items ##")
-    billingItems = []
-    for b in BillingItems(client):
-#        billingItems.append(b)
-        print(json.dumps(b, sort_keys=True, indent=4))
-#    save_csv('slcrooge-latest' + timestamp + '-items.csv', billingItems,
-#             header=BillingItem.header_list())  
-
+    # 1.1. User
+    users = {}
+    for user in IterableItems(client['Account'].getUsers, mask='id, username'):
+        users[user['id']] = user
+    
+    # 1.2. Billing_Order -> Billing_Order_Item -> Billing_Item
+    bi2uid = {} # map of billing_item and user (ordered)
+    for order in IterableItems(client['Account'].getOrders, mask='id, userRecordId'):
+        for billing_order_item in IterableItems(client['Billing_Order'].getItems,
+                                                id=order['id'], mask='id'):
+            billing_item = client['Billing_Order_Item'].getBillingItem(id=billing_order_item['id'], mask='id')
+            bi2uid[billing_item['id']] = order['userRecordId']
+    
+    print(bi2uid.keys())
+    
+    
+    # 2. Processing each Billing_Invoices
+    
+    # Billing_Invoice
+    for invoice in IterableItems(client['Account'].getInvoices, mask='id'):
+        logging.info('Billing_Invoice:' + str(invoice['id']))
+        
+        #with open('slcrooge-' + str(invoice['id']) + '.json', mode='w') as f:
+        #    bi = client['Billing_Invoice'].getObject(id=invoice['id'])
+        #    json.dump(bi, f, indent=2)
+        
+        items = []
+        for billing_invoice_item in IterableItems(client['Billing_Invoice'].getItems,
+                                                  id=invoice['id'], mask=BillingItem.header_as_mask()):
+            logging.info('Billing_Invoice:' + str(invoice['id']) + ' Billing_Item:' + str(billing_invoice_item['id']))
+        
+            
+            items.append(billing_invoice_item['billingItemId'])
+            
+            if billing_invoice_item['billingItemId'] in bi2uid:
+                user = users[bi2uid[billing_invoice_item['billingItemId']]]
+            else:
+                logging.warning('No user found for %s' % (str(billing_invoice_item)))
+                user = 'None'
+            
+            print(str(invoice['id']) + '-' + str(billing_invoice_item['billingItemId']) + ' ordered by ' + str(user))
+            
+            #with open('slcrooge-' + str(invoice['id']) + '-' + str(billing_invoice_item['id']) + '.json', mode='w') as f:
+                
+            #    json.dump(billing_invoice_item, f, indent=2)
+    
+        #print(items)
+    exit(1)
+    
+    # (ToDo) 3. Latest Billing_Items (without Invoice)
+    
+###    # User information
+###    for user in IterableItems(client['Account'].getUsers, mask='id, username'):
+###        print(json.dumps(user, indent=2))
+###        print(client['User_Customer'].getVirtualGuestCount(id=user['id']))
+###        
+###        billing_items = []
+###        
+###        # 課金対象となる item ごとに list を作成。
+###        kwargs = NestedDict({})
+###        kwargs['id'] = user['id']
+###        kwargs['mask'] = 'id'
+###        
+###        for vs in IterableItems(client['User_Customer'].getVirtualGuests, id=user['id'], mask='id'):
+###            vs_id = vs['id']
+###            
+###
+###            billing_item_id = int(client['Virtual_Guest'].getBillingItem(id=vs['id'], mask='id')['id'])
+###            billing_items.append(billing_item_id)
+###            
+###            #print(json.dumps(billing_item, indent=2))
+###        
+###        print(billing_items)
+        
 except SoftLayer.SoftLayerAPIError as e:
     logging.error("Unable to retrieve account information faultCode=%s, faultString=%s"
           % (e.faultCode, e.faultString))
+    traceback.print_exc(file=sys.stdout)
     exit(1)
