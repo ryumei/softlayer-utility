@@ -34,7 +34,7 @@ stream_log.setLevel(logging.WARNING)
 stream_log.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
 
 file_log = logging.FileHandler(filename='slcrooge.log')
-file_log.setLevel(logging.DEBUG)
+file_log.setLevel(logging.INFO)
 file_log.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
 
 logging.getLogger().addHandler(stream_log)
@@ -168,70 +168,100 @@ def str2date(str):
 
 # ----------------------------------------------------------------------
 
+def getAccount(client):
+    return client['Account'].getObject(mask="id, firstName, lastName, email")
+
+def getUsers(client):
+    users = {} # map of users
+    for user in IterableItems(client['Account'].getUsers, mask='id, username'):
+        users[user['id']] = user
+    return users
+
+class BillingItemUserMap():
+    u"""Master map of Billing_Item and User_Customer"""
+    
+    def __init__(self, client):
+        self.account_svc = client['Account']
+        self.order_svc = client['Billing_Order']
+        self.order_item_svc = client['Billing_Order_Item']
+        self.map = self.getMap(client)
+
+    def getMap(self, client):
+        order_svc = client['Billing_Order']
+        order_item_svc = client['Billing_Order_Item']
+        
+        map = {} 
+        for order in IterableItems(self.account_svc.getOrders, mask='id, userRecordId'):
+            for billing_order_item in IterableItems(self.order_svc.getItems,
+                                                    id=order['id'], mask='id'):
+                billing_item = self.order_item_svc.getBillingItem(id=billing_order_item['id'],
+                                                                  mask='id')
+                map[billing_item['id']] = order['userRecordId']
+        return map
+    
+    def getUserId(self, billing_item_id):
+        return self.map[billing_item_id]
+                
+    def exist(self, billing_item_id):
+        return billing_item_id in self.map 
+
+
+class UserInvoice():
+
+    def __init__(self, client, users):
+        self.invoice_svc = client['Billing_Invoice']
+        self.users = users
+        
+    def getBillingItems(self, invoice_id):
+        items = []
+        for billing_invoice_item in IterableItems(self.invoice_svc.getItems,
+                                                  id=invoice_id, 
+                                                  mask=BillingItem.header_as_mask()):
+            logging.info('Billing_Invoice:%d Billing_Item:%d'
+                         % (invoice_id, billing_invoice_item['id']))
+            
+            items.append(billing_invoice_item['billingItemId'])
+
+            billing_item_id = billing_invoice_item['billingItemId']
+            if bi_map.exist(billing_item_id):
+                user = users[bi_map.getUserId(billing_item_id)]
+            else:
+                logging.warning('No user found for %s' % (str(billing_invoice_item)))
+                user = 'None'
+            
+            print("%d-%d ordered by %s"
+                  % (invoice_id, billing_invoice_item['billingItemId'], str(user)))
+        
+        return items
+                
+
+# ----------------------------------------------------------------------
+
 timestamp = datetime.datetime.now().strftime("%y%m%d%H%M%S")
 
 try:
     client = SoftLayer.Client()
     
-#    print("## Account information ##") 
-#    account_info = client['Account'].getObject(mask="id, firstName, lastName, email")
-#    print(account_info)
-    
     # 1. Build map Billing_Item to User_Customer from Billing_Order
-
-    # 1.1. User
-    users = {}
-    for user in IterableItems(client['Account'].getUsers, mask='id, username'):
-        users[user['id']] = user
-    
-    # 1.2. Billing_Order -> Billing_Order_Item -> Billing_Item
-    bi2uid = {} # map of billing_item and user (ordered)
-    for order in IterableItems(client['Account'].getOrders, mask='id, userRecordId'):
-        for billing_order_item in IterableItems(client['Billing_Order'].getItems,
-                                                id=order['id'], mask='id'):
-            billing_item = client['Billing_Order_Item'].getBillingItem(id=billing_order_item['id'], mask='id')
-            bi2uid[billing_item['id']] = order['userRecordId']
-    
-    print(bi2uid.keys())
-    
+    users = getUsers(client)
+    # map of billing_items and users (ordered)
+    bi_map = BillingItemUserMap(client)
     
     # 2. Processing each Billing_Invoices
-    
-    # Billing_Invoice
+            
+    # 2.1. Billing_Invoice
+    invoice_mgr = UserInvoice(client, users)
     for invoice in IterableItems(client['Account'].getInvoices, mask='id'):
-        logging.info('Billing_Invoice:' + str(invoice['id']))
+        logging.info('Billing_Invoice:%d' % (invoice['id']))
         
-        #with open('slcrooge-' + str(invoice['id']) + '.json', mode='w') as f:
-        #    bi = client['Billing_Invoice'].getObject(id=invoice['id'])
-        #    json.dump(bi, f, indent=2)
+        items = invoice_mgr.getBillingItems(invoice['id'])
         
-        items = []
-        for billing_invoice_item in IterableItems(client['Billing_Invoice'].getItems,
-                                                  id=invoice['id'], mask=BillingItem.header_as_mask()):
-            logging.info('Billing_Invoice:' + str(invoice['id']) + ' Billing_Item:' + str(billing_invoice_item['id']))
-        
-            
-            items.append(billing_invoice_item['billingItemId'])
-            
-            if billing_invoice_item['billingItemId'] in bi2uid:
-                user = users[bi2uid[billing_invoice_item['billingItemId']]]
-            else:
-                logging.warning('No user found for %s' % (str(billing_invoice_item)))
-                user = 'None'
-            
-            print(str(invoice['id']) + '-' + str(billing_invoice_item['billingItemId']) + ' ordered by ' + str(user))
-            
-            #with open('slcrooge-' + str(invoice['id']) + '-' + str(billing_invoice_item['id']) + '.json', mode='w') as f:
-                
-            #    json.dump(billing_invoice_item, f, indent=2)
-    
-        #print(items)
     exit(1)
     
     # (ToDo) 3. Latest Billing_Items (without Invoice)
     
 ###    # User information
-###    for user in IterableItems(client['Account'].getUsers, mask='id, username'):
+###    for user in IterableItems(account_svc.getUsers, mask='id, username'):
 ###        print(json.dumps(user, indent=2))
 ###        print(client['User_Customer'].getVirtualGuestCount(id=user['id']))
 ###        
