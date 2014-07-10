@@ -99,7 +99,7 @@ class DictStore():
             lst.append(v)
         return lst
 
-# --------------------------------------
+# --------------------------------------        
 
 class BillingInvoice(DictStore):
     def __init__(self, d):
@@ -185,7 +185,7 @@ class BillingItemUserMap():
         self.order_svc = client['Billing_Order']
         self.order_item_svc = client['Billing_Order_Item']
         self.map = self.getMap(client)
-
+    
     def getMap(self, client):
         order_svc = client['Billing_Order']
         order_item_svc = client['Billing_Order_Item']
@@ -212,32 +212,46 @@ class UserInvoice():
         self.invoice_svc = client['Billing_Invoice']
         self.users = users
         
-    def getBillingItems(self, invoice_id):
-        items = []
+    def getInvoiceItems(self, invoice_id):
+        items = dict.fromkeys(users.keys()) # NOTE: Should NOT USE initializer (shared)
+        for k in items.keys():
+            items[k] = []
+        items['None'] = []
+         
         for billing_invoice_item in IterableItems(self.invoice_svc.getItems,
                                                   id=invoice_id, 
                                                   mask=BillingItem.header_as_mask()):
-            logging.info('Billing_Invoice:%d Billing_Item:%d'
+            logging.info('Billing_Invoice:%d Billing_Invoice_Item:%d'
                          % (invoice_id, billing_invoice_item['id']))
             
-            items.append(billing_invoice_item['billingItemId'])
-
             billing_item_id = billing_invoice_item['billingItemId']
             if bi_map.exist(billing_item_id):
-                user = users[bi_map.getUserId(billing_item_id)]
+                user_id = bi_map.getUserId(billing_item_id)
             else:
-                logging.warning('No user found for %s' % (str(billing_invoice_item)))
-                user = 'None'
+                logging.warning('No user found for Billing_Invoice_Item:%s'
+                                % (str(billing_invoice_item)))
+                user_id = 'None'
+            items[user_id].append(billing_invoice_item['id'])
             
-            print("%d-%d ordered by %s"
-                  % (invoice_id, billing_invoice_item['billingItemId'], str(user)))
+            #print("%d-%d ordered by %s"
+            #      % (invoice_id, billing_invoice_item['billingItemId'], user_id))
         
         return items
+
+#
+#   Billing_Invoice_Item <-> Billing_Item
+#   Billing_Item <-> 
+#   User_Customer <-> Billing_Order
+#   Billing_Order <-> Billing_Item
+#
+#
+#
+
                 
 
 # ----------------------------------------------------------------------
 
-timestamp = datetime.datetime.now().strftime("%y%m%d%H%M%S")
+#timestamp = datetime.datetime.now().strftime("%y%m%d%H%M%S")
 
 try:
     client = SoftLayer.Client()
@@ -248,13 +262,30 @@ try:
     bi_map = BillingItemUserMap(client)
     
     # 2. Processing each Billing_Invoices
-            
+    
     # 2.1. Billing_Invoice
     invoice_mgr = UserInvoice(client, users)
     for invoice in IterableItems(client['Account'].getInvoices, mask='id'):
         logging.info('Billing_Invoice:%d' % (invoice['id']))
+
+        print('Billing_Invoice:%d' % (invoice['id']))        
         
-        items = invoice_mgr.getBillingItems(invoice['id'])
+        items = invoice_mgr.getInvoiceItems(invoice['id'])
+        for user_id, invoice_items in items.items():
+            if user_id in users:
+                print("  User_Customer:%s" % (users[user_id]))
+            else:
+                logging.warning('Unknown user: %s' % ( user_id ))
+            # BillingInvoiceItem に変更しないといけない？
+            #
+            
+            for invoice_item in invoice_items:
+                #TODO Billing_Invoice_Item id
+                print("    Billing_Invoice_Item id:%d" % (invoice_item))
+                #print("    Billing_Item:%s" % (invoice_item['id']))
+        
+        
+        
         
     exit(1)
     
